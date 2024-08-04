@@ -58,8 +58,22 @@ def download_video(url, download_path):
         print(f"An error occurred: {e}")
         traceback.print_exc()
 
+def create_requirements():
+    requirements = [
+        "yt-dlp",
+        "tqdm"
+    ]
+    
+    with open('requirements.txt', 'w') as f:
+        for requirement in requirements:
+            f.write(f"{requirement}\n")
+    print("requirements.txt file created successfully.")
+
 def main():
     print("Video Downloader")
+
+    # Create requirements.txt file
+    create_requirements()
 
     while True:
         download_path = input("Enter the download path: ").strip()
