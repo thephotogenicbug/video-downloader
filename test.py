@@ -72,27 +72,34 @@ def main():
 
     create_requirements()
 
-    while True:
-        download_path = input("Enter the download path: ").strip()
-        if not os.path.isdir(download_path):
-            print("Invalid directory path. Please enter a valid path.")
-            continue
-        else:
-            break
+    try:
+        while True:
+            download_path = input("Enter the download path: ").strip()
+            if not os.path.isdir(download_path):
+                print("Invalid directory path. Please enter a valid path.")
+                continue
+            else:
+                break
+    except KeyboardInterrupt:
+        print("\nDownload path input interrupted. Exiting the downloader.")
+        return
 
-    while True:
-        url = input("Enter the URL of the video to download (or type 'exit' to quit): ").strip()
-        if url.lower() == 'exit':
-            print("Exiting the downloader.")
-            break
-        if not url:
-            print("URL cannot be empty.")
-            continue
-        if not validators.url(url):
-            print("Invalid URL. Please enter a valid URL.")
-            continue
+    try:
+        while True:
+            url = input("Enter the URL of the video to download (or type 'exit' to quit): ").strip()
+            if url.lower() == 'exit':
+                print("Exiting the downloader.")
+                break
+            if not url:
+                print("URL cannot be empty.")
+                continue
+            if not validators.url(url):
+                print("Invalid URL. Please enter a valid URL.")
+                continue
 
-        download_video(url, download_path)
+            download_video(url, download_path)
+    except KeyboardInterrupt:
+        print("\nURL input interrupted. Exiting the downloader.")
 
 if __name__ == "__main__":
     main()
