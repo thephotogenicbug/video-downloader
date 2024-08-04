@@ -1,10 +1,12 @@
-import yt_dlp
-import re
 import os
-from tqdm import tqdm
+import re
 import sys
+import time
 import traceback
 import validators
+from tqdm import tqdm
+import yt_dlp
+import instaloader
 
 def sanitize_filename(filename):
     return re.sub(r'[<>:"/\\|?*\x00-\x1F]', '', filename)
@@ -60,19 +62,85 @@ def download_video(url, download_path):
         print(f"An error occurred: {e}")
         traceback.print_exc()
 
+def download_instagram_content(url, download_path, username=None, password=None):
+    session_file = "instaloader_session"
+
+    loader = instaloader.Instaloader(
+        dirname_pattern=download_path,
+        filename_pattern='{shortcode}',
+        post_metadata_txt_pattern=None,
+        download_video_thumbnails=False,
+        compress_json=False
+    )
+
+    def login():
+        try:
+            loader.load_session_from_file(username, session_file)
+            print("Session loaded successfully.")
+        except FileNotFoundError:
+            print("Session file not found. Logging in.")
+            if not username or not password:
+                raise ValueError("Username and password are required for the first login.")
+            loader.context.log("Logging in...")
+            loader.login(username, password)
+            loader.save_session_to_file(session_file)
+
+    def retry_request(shortcode, max_retries=5, backoff_factor=2):
+        attempt = 0
+        while attempt < max_retries:
+            try:
+                post = instaloader.Post.from_shortcode(loader.context, shortcode)
+                return post
+            except instaloader.exceptions.ConnectionException as e:
+                if 'Please wait a few minutes before you try again' in str(e):
+                    attempt += 1
+                    wait_time = backoff_factor ** attempt
+                    print(f"Rate limit hit. Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    raise
+        raise RuntimeError(f"Failed to fetch post after {max_retries} retries.")
+
+    try:
+        login()
+
+        # Extract shortcode from the URL
+        shortcode = url.split("/")[-2]
+        post = retry_request(shortcode)
+        print(f"Downloading content from: {url}")
+
+        if post.is_video:
+            filename = f"{sanitize_filename(post.shortcode)}.mp4"
+        else:
+            filename = f"{sanitize_filename(post.shortcode)}.jpg"
+
+        file_path = os.path.join(download_path, filename)
+        if os.path.exists(file_path):
+            print(f"The file '{filename}' already exists. Skipping download.")
+        else:
+            print(f"Downloading: {filename}")
+            loader.download_post(post, target=download_path)
+            print(f"Download complete: {filename}")
+
+    except instaloader.exceptions.BadCredentialsException:
+        print("Invalid login credentials. Please check your username and password.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        traceback.print_exc()
+
 def create_requirements():
     if os.path.exists('requirements.txt'):
         print("requirements.txt already exists. Skipping creation.")
         return
 
-    requirements = ["yt-dlp", "tqdm", "validators"]
+    requirements = ["yt-dlp", "tqdm", "validators", "instaloader"]
     with open('requirements.txt', 'w') as f:
         for requirement in requirements:
             f.write(f"{requirement}\n")
     print("requirements.txt file created successfully.")
 
 def main():
-    print("Video Downloader")
+    print("Content Downloader")
 
     create_requirements()
 
@@ -90,7 +158,7 @@ def main():
 
     try:
         while True:
-            mode = input("Choose download mode (single/batch): ").strip().lower()
+            mode = input("Choose download mode (single/batch/instagram): ").strip().lower()
             if mode == 'single':
                 while True:
                     url = input("Enter the URL of the video to download (or type 'exit' to quit): ").strip()
@@ -120,8 +188,29 @@ def main():
                             print(f"Invalid URL: {url}. Skipping.")
                             continue
                         download_video(url, download_path)
+            elif mode == 'instagram':
+                try:
+                    username = input("Enter your Instagram username: ").strip()
+                    password = input("Enter your Instagram password: ").strip()
+                except KeyboardInterrupt:
+                    print("\nInput interrupted. Exiting the downloader.")
+                    return
+
+                while True:
+                    url = input("Enter the Instagram post URL (or type 'exit' to quit): ").strip()
+                    if url.lower() == 'exit':
+                        print("Exiting the downloader.")
+                        break
+                    if not url:
+                        print("URL cannot be empty.")
+                        continue
+                    if 'instagram.com' not in url:
+                        print("Invalid Instagram URL. Please enter a valid Instagram post URL.")
+                        continue
+
+                    download_instagram_content(url, download_path, username, password)
             else:
-                print("Invalid mode selected. Please choose 'single' or 'batch'.")
+                print("Invalid mode selected. Please choose 'single', 'batch', or 'instagram'.")
     except KeyboardInterrupt:
         print("\nInput interrupted. Exiting the downloader.")
 
