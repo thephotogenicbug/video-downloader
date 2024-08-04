@@ -35,7 +35,7 @@ This is a Python script for downloading videos from various sources using `yt-dl
 1. Run the script.
 
     ```bash
-    python python-video-downloader.py
+    python video-downloader.py
     ```
 
 2. Enter the download path when prompted.
@@ -44,6 +44,6 @@ This is a Python script for downloading videos from various sources using `yt-dl
 ## Example
 
 ```bash
-python python-video-downloader.py
+python video-downloader.py
 Enter the download path: /path/to/download
 Enter the URL of the video to download (or type 'exit' to quit): https://www.youtube.com/watch?v=dQw4w9WgXcQ
