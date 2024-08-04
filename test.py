@@ -61,6 +61,10 @@ def download_video(url, download_path):
         traceback.print_exc()
 
 def create_requirements():
+    if os.path.exists('requirements.txt'):
+        print("requirements.txt already exists. Skipping creation.")
+        return
+
     requirements = ["yt-dlp", "tqdm", "validators"]
     with open('requirements.txt', 'w') as f:
         for requirement in requirements:
