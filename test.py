@@ -90,20 +90,40 @@ def main():
 
     try:
         while True:
-            url = input("Enter the URL of the video to download (or type 'exit' to quit): ").strip()
-            if url.lower() == 'exit':
-                print("Exiting the downloader.")
-                break
-            if not url:
-                print("URL cannot be empty.")
-                continue
-            if not validators.url(url):
-                print("Invalid URL. Please enter a valid URL.")
-                continue
+            mode = input("Choose download mode (single/batch): ").strip().lower()
+            if mode == 'single':
+                while True:
+                    url = input("Enter the URL of the video to download (or type 'exit' to quit): ").strip()
+                    if url.lower() == 'exit':
+                        print("Exiting the downloader.")
+                        break
+                    if not url:
+                        print("URL cannot be empty.")
+                        continue
+                    if not validators.url(url):
+                        print("Invalid URL. Please enter a valid URL.")
+                        continue
 
-            download_video(url, download_path)
+                    download_video(url, download_path)
+            elif mode == 'batch':
+                while True:
+                    urls = input("Enter URLs of videos to download (separated by commas) or type 'exit' to quit: ").strip()
+                    if urls.lower() == 'exit':
+                        print("Exiting the downloader.")
+                        break
+                    urls_list = [url.strip() for url in urls.split(',') if url.strip()]
+                    if not urls_list:
+                        print("No valid URLs provided.")
+                        continue
+                    for url in urls_list:
+                        if not validators.url(url):
+                            print(f"Invalid URL: {url}. Skipping.")
+                            continue
+                        download_video(url, download_path)
+            else:
+                print("Invalid mode selected. Please choose 'single' or 'batch'.")
     except KeyboardInterrupt:
-        print("\nURL input interrupted. Exiting the downloader.")
+        print("\nInput interrupted. Exiting the downloader.")
 
 if __name__ == "__main__":
     main()
