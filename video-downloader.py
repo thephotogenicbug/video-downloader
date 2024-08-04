@@ -44,7 +44,13 @@ def download_video(url, download_path):
             extension = info_dict.get('ext', 'mp4')
             filename = f"{title}.{extension}"
             
-            ydl_opts['outtmpl'] = os.path.join(download_path, filename)
+            # Check if the file already exists
+            file_path = os.path.join(download_path, filename)
+            if os.path.exists(file_path):
+                print(f"The file '{filename}' already exists. Skipping download.")
+                return
+
+            ydl_opts['outtmpl'] = file_path
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
         print(f"Download complete: {filename}")
