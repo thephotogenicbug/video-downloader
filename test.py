@@ -183,11 +183,19 @@ def main():
                     if not urls_list:
                         print("No valid URLs provided.")
                         continue
-                    for url in urls_list:
+
+                    total_links = len(urls_list)
+                    print(f"Total URLs to process: {total_links}")
+                    for index, url in enumerate(urls_list, start=1):
                         if not validators.url(url):
                             print(f"Invalid URL: {url}. Skipping.")
                             continue
+
+                        print(f"Processing URL {index}/{total_links}: {url}")
                         download_video(url, download_path)
+
+                        remaining_links = total_links - index
+                        print(f"{remaining_links} links remaining.")
             elif mode == 'instagram':
                 try:
                     username = input("Enter your Instagram username: ").strip()
