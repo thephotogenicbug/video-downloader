@@ -8,10 +8,27 @@ from tqdm import tqdm
 import yt_dlp
 import instaloader
 
+LINKS_FILE = "pending_downloads.txt"
+
 def sanitize_filename(filename):
     return re.sub(r'[<>:"/\\|?*\x00-\x1F]', '', filename)
 
-def download_video(url, download_path):
+def save_pending_links(links):
+    with open(LINKS_FILE, 'w') as f:
+        for link in links:
+            f.write(link + "\n")
+
+def load_pending_links():
+    if os.path.exists(LINKS_FILE):
+        with open(LINKS_FILE, 'r') as f:
+            return [line.strip() for line in f.readlines() if line.strip()]
+    return []
+
+def delete_pending_links_file():
+    if os.path.exists(LINKS_FILE):
+        os.remove(LINKS_FILE)
+
+def download_video(url, download_path, pending_links):
     def hook(d):
         if d['status'] == 'downloading':
             downloaded = d.get('downloaded_bytes', 0)
@@ -20,13 +37,11 @@ def download_video(url, download_path):
                 if not hasattr(hook, 'pbar'):
                     hook.pbar = tqdm(total=total, unit='B', unit_scale=True, desc="Downloading")
                 hook.pbar.update(downloaded - hook.pbar.n)
-            else:
-                print("Download progress: Unable to determine total size", end='\r')
         elif d['status'] == 'finished':
             if hasattr(hook, 'pbar'):
                 hook.pbar.close()
             print("Download complete!")
-
+    
     ydl_opts = {
         'format': 'bestvideo[height>=1080]+bestaudio/best[height>=1080]/best',
         'noplaylist': True,
@@ -37,7 +52,7 @@ def download_video(url, download_path):
         'logger': None,
         'writeinfojson': False
     }
-
+    
     try:
         print(f"Processing URL: {url}")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -45,16 +60,20 @@ def download_video(url, download_path):
             title = sanitize_filename(info_dict.get('title', 'video'))
             extension = info_dict.get('ext', 'mp4')
             filename = f"{title}.{extension}"
-            
-            # Check if the file already exists
             file_path = os.path.join(download_path, filename)
+            
             if os.path.exists(file_path):
                 print(f"The file '{filename}' already exists. Skipping download.")
                 return
-
+            
             ydl_opts['outtmpl'] = file_path
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
+            
+            if url in pending_links:
+                pending_links.remove(url)
+                save_pending_links(pending_links)
+            
         print(f"Download complete: {filename}")
     except Exception as e:
         if hasattr(hook, 'pbar'):
@@ -62,88 +81,13 @@ def download_video(url, download_path):
         print(f"An error occurred: {e}")
         traceback.print_exc()
 
-def download_instagram_content(url, download_path, username=None, password=None):
-    session_file = "instaloader_session"
-
-    loader = instaloader.Instaloader(
-        dirname_pattern=download_path,
-        filename_pattern='{shortcode}',
-        post_metadata_txt_pattern=None,
-        download_video_thumbnails=False,
-        compress_json=False
-    )
-
-    def login():
-        try:
-            loader.load_session_from_file(username, session_file)
-            print("Session loaded successfully.")
-        except FileNotFoundError:
-            print("Session file not found. Logging in.")
-            if not username or not password:
-                raise ValueError("Username and password are required for the first login.")
-            loader.context.log("Logging in...")
-            loader.login(username, password)
-            loader.save_session_to_file(session_file)
-
-    def retry_request(shortcode, max_retries=5, backoff_factor=2):
-        attempt = 0
-        while attempt < max_retries:
-            try:
-                post = instaloader.Post.from_shortcode(loader.context, shortcode)
-                return post
-            except instaloader.exceptions.ConnectionException as e:
-                if 'Please wait a few minutes before you try again' in str(e):
-                    attempt += 1
-                    wait_time = backoff_factor ** attempt
-                    print(f"Rate limit hit. Retrying in {wait_time} seconds...")
-                    time.sleep(wait_time)
-                else:
-                    raise
-        raise RuntimeError(f"Failed to fetch post after {max_retries} retries.")
-
-    try:
-        login()
-
-        # Extract shortcode from the URL
-        shortcode = url.split("/")[-2]
-        post = retry_request(shortcode)
-        print(f"Downloading content from: {url}")
-
-        if post.is_video:
-            filename = f"{sanitize_filename(post.shortcode)}.mp4"
-        else:
-            filename = f"{sanitize_filename(post.shortcode)}.jpg"
-
-        file_path = os.path.join(download_path, filename)
-        if os.path.exists(file_path):
-            print(f"The file '{filename}' already exists. Skipping download.")
-        else:
-            print(f"Downloading: {filename}")
-            loader.download_post(post, target=download_path)
-            print(f"Download complete: {filename}")
-
-    except instaloader.exceptions.BadCredentialsException:
-        print("Invalid login credentials. Please check your username and password.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        traceback.print_exc()
-
-def create_requirements():
-    if os.path.exists('requirements.txt'):
-        print("requirements.txt already exists. Skipping creation.")
-        return
-
-    requirements = ["yt-dlp", "tqdm", "validators", "instaloader"]
-    with open('requirements.txt', 'w') as f:
-        for requirement in requirements:
-            f.write(f"{requirement}\n")
-    print("requirements.txt file created successfully.")
-
 def main():
-    print("Content Downloader")
-
-    create_requirements()
-
+    print("Content Downloader with Auto-Resume Feature")
+    
+    pending_links = load_pending_links()
+    if pending_links:
+        print(f"Resuming {len(pending_links)} pending downloads...")
+    
     try:
         while True:
             download_path = input("Enter the download path: ").strip()
@@ -155,72 +99,54 @@ def main():
     except KeyboardInterrupt:
         print("\nDownload path input interrupted. Exiting the downloader.")
         return
-
+    
     try:
         while True:
-            mode = input("Choose download mode (single/batch/instagram): ").strip().lower()
+            if pending_links:
+                for url in pending_links[:]:
+                    download_video(url, download_path, pending_links)
+                delete_pending_links_file()
+                print("All pending downloads completed!")
+                continue
+            
+            mode = input("Choose download mode (single/batch): ").strip().lower()
             if mode == 'single':
                 while True:
                     url = input("Enter the URL of the video to download (or type 'exit' to quit): ").strip()
                     if url.lower() == 'exit':
                         print("Exiting the downloader.")
                         break
-                    if not url:
-                        print("URL cannot be empty.")
-                        continue
                     if not validators.url(url):
                         print("Invalid URL. Please enter a valid URL.")
                         continue
-
-                    download_video(url, download_path)
+                    download_video(url, download_path, pending_links)
             elif mode == 'batch':
                 while True:
                     urls = input("Enter URLs of videos to download (separated by commas) or type 'exit' to quit: ").strip()
                     if urls.lower() == 'exit':
                         print("Exiting the downloader.")
                         break
-                    urls_list = [url.strip() for url in urls.split(',') if url.strip()]
+                    urls_list = [url.strip() for url in urls.split(',') if url.strip() and validators.url(url)]
                     if not urls_list:
                         print("No valid URLs provided.")
                         continue
-
+                    
+                    pending_links.extend(urls_list)
+                    save_pending_links(pending_links)
+                    
                     total_links = len(urls_list)
                     print(f"Total URLs to process: {total_links}")
                     for index, url in enumerate(urls_list, start=1):
-                        if not validators.url(url):
-                            print(f"Invalid URL: {url}. Skipping.")
-                            continue
-
                         print(f"Processing URL {index}/{total_links}: {url}")
-                        download_video(url, download_path)
-
-                        remaining_links = total_links - index
-                        print(f"{remaining_links} links remaining.")
-            elif mode == 'instagram':
-                try:
-                    username = input("Enter your Instagram username: ").strip()
-                    password = input("Enter your Instagram password: ").strip()
-                except KeyboardInterrupt:
-                    print("\nInput interrupted. Exiting the downloader.")
-                    return
-
-                while True:
-                    url = input("Enter the Instagram post URL (or type 'exit' to quit): ").strip()
-                    if url.lower() == 'exit':
-                        print("Exiting the downloader.")
-                        break
-                    if not url:
-                        print("URL cannot be empty.")
-                        continue
-                    if 'instagram.com' not in url:
-                        print("Invalid Instagram URL. Please enter a valid Instagram post URL.")
-                        continue
-
-                    download_instagram_content(url, download_path, username, password)
+                        download_video(url, download_path, pending_links)
+                        print(f"{total_links - index} links remaining.")
+                    
+                    delete_pending_links_file()
             else:
-                print("Invalid mode selected. Please choose 'single', 'batch', or 'instagram'.")
+                print("Invalid mode selected. Please choose 'single' or 'batch'.")
     except KeyboardInterrupt:
         print("\nInput interrupted. Exiting the downloader.")
+        save_pending_links(pending_links)
 
 if __name__ == "__main__":
     main()
